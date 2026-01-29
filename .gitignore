@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+.env
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.mypy_cache/
+.pytest_cache/
+.cache/
+.coverage
+htmlcov/
+.eggs/
+build/
+dist/
+*.egg-info/
+# Home Assistant build artefacts
+custom_components/**/__pycache__/
+custom_components/**/.pytest_cache/

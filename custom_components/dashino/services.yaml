@@ -1,0 +1,47 @@
+forward:
+  name: Forward webhook
+  description: Send a payload to the Dashino webhook endpoint.
+  fields:
+    source:
+      name: Source
+      description: Overrides the configured default source for the webhook path.
+      selector:
+        text:
+    widgetId:
+      name: Widget ID
+      description: Widget identifier used by Dashino (optional).
+      selector:
+        text:
+    type:
+      name: Type
+      description: Message type for the widget (optional).
+      selector:
+        text:
+    data:
+      name: Data
+      description: Arbitrary data payload. Ignored when raw is provided.
+      selector:
+        object:
+    raw:
+      name: Raw payload
+      description: Full JSON body to send directly. When set, other fields are ignored.
+      selector:
+        object:
+  examples:
+    - name: Toast alert to widget
+      description: Forward a toast message to widget "alerts" with templated text.
+      service: dashino.forward
+      data:
+        widgetId: alerts
+        type: toast
+        data:
+          message: "{{ states('sensor.living_room_status') }}"
+    - name: Send raw payload
+      description: Forward a fully custom body without defaults.
+      service: dashino.forward
+      data:
+        raw:
+          widgetId: camera-feed
+          type: refresh
+          data:
+            reason: manual
