@@ -41,11 +41,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
 
-    base_url: str = entry.data[CONF_BASE_URL]
-    default_source: str = entry.data[CONF_DEFAULT_SOURCE]
-    secret: str | None = entry.data.get(CONF_SECRET) or None
-    default_widget_id: str | None = entry.data.get(CONF_DEFAULT_WIDGET_ID) or None
-    default_type: str | None = entry.data.get(CONF_DEFAULT_TYPE) or None
+    def _get(key: str) -> str | None:
+        return entry.options.get(key, entry.data.get(key))
+
+    base_url: str = _get(CONF_BASE_URL) or ""
+    default_source: str = _get(CONF_DEFAULT_SOURCE) or ""
+    secret_value = _get(CONF_SECRET)
+    secret: str | None = secret_value or None
+    default_widget_id: str | None = _get(CONF_DEFAULT_WIDGET_ID) or None
+    default_type: str | None = _get(CONF_DEFAULT_TYPE) or None
 
     client = DashinoClient(
         base_url=base_url,

@@ -33,13 +33,15 @@ async def async_get_config_entry_diagnostics(
     client = stored.get("client")
     last_error = getattr(client, "last_error", None)
 
+    conf = entry.options or entry.data
+
     return {
         "config": {
-            CONF_BASE_URL: entry.data.get(CONF_BASE_URL),
-            CONF_DEFAULT_SOURCE: entry.data.get(CONF_DEFAULT_SOURCE),
-            CONF_DEFAULT_WIDGET_ID: entry.data.get(CONF_DEFAULT_WIDGET_ID) or None,
-            CONF_DEFAULT_TYPE: entry.data.get(CONF_DEFAULT_TYPE) or None,
-            CONF_SECRET: _redact_secret(entry.data.get(CONF_SECRET)),
+            CONF_BASE_URL: conf.get(CONF_BASE_URL),
+            CONF_DEFAULT_SOURCE: conf.get(CONF_DEFAULT_SOURCE),
+            CONF_DEFAULT_WIDGET_ID: conf.get(CONF_DEFAULT_WIDGET_ID) or None,
+            CONF_DEFAULT_TYPE: conf.get(CONF_DEFAULT_TYPE) or None,
+            CONF_SECRET: _redact_secret(conf.get(CONF_SECRET)),
         },
         "state": {
             "last_error": last_error,

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, ConfigEntry, OptionsFlow
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -88,3 +88,74 @@ class DashinoConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
+
+
+class DashinoOptionsFlowHandler(OptionsFlow):
+    """Handle Dashino options."""
+
+    def __init__(self, entry: ConfigEntry) -> None:
+        self.entry = entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            base_url_raw: str = user_input[CONF_BASE_URL]
+            base_url = _normalize_base_url(base_url_raw)
+            default_source: str = user_input[CONF_DEFAULT_SOURCE].strip()
+            secret: str = user_input.get(CONF_SECRET, "")
+            default_widget_id: str = user_input.get(CONF_DEFAULT_WIDGET_ID, "")
+            default_type: str = user_input.get(CONF_DEFAULT_TYPE, "")
+
+            if not _is_valid_url(base_url):
+                errors[CONF_BASE_URL] = "invalid_url"
+            elif not default_source:
+                errors[CONF_DEFAULT_SOURCE] = "invalid_source"
+            else:
+                client = DashinoClient(
+                    base_url=base_url,
+                    default_source=default_source,
+                    session=async_get_clientsession(self.hass),
+                    secret=secret or None,
+                )
+
+                try:
+                    await client.test_connectivity(default_source)
+                except Exception:  # noqa: BLE001
+                    errors["base"] = "cannot_connect"
+
+            if not errors:
+                return self.async_create_entry(
+                    title="Dashino",  # unused by options
+                    data={
+                        CONF_BASE_URL: base_url,
+                        CONF_DEFAULT_SOURCE: default_source,
+                        CONF_SECRET: secret,
+                        CONF_DEFAULT_WIDGET_ID: default_widget_id,
+                        CONF_DEFAULT_TYPE: default_type,
+                    },
+                )
+
+        current = self.entry.options or self.entry.data
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_BASE_URL, default=current.get(CONF_BASE_URL, "")): str,
+                vol.Required(
+                    CONF_DEFAULT_SOURCE, default=current.get(CONF_DEFAULT_SOURCE, "homeassistant")
+                ): str,
+                vol.Optional(CONF_SECRET, default=current.get(CONF_SECRET, "")): str,
+                vol.Optional(
+                    CONF_DEFAULT_WIDGET_ID, default=current.get(CONF_DEFAULT_WIDGET_ID, "")
+                ): str,
+                vol.Optional(CONF_DEFAULT_TYPE, default=current.get(CONF_DEFAULT_TYPE, "")): str,
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=data_schema, errors=errors)
+
+
+async def async_get_options_flow(entry: ConfigEntry) -> OptionsFlow:
+    """Create the options flow."""
+
+    return DashinoOptionsFlowHandler(entry)
