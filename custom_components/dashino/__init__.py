@@ -17,23 +17,46 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     ATTR_DATA,
+    ATTR_KEY,
+    ATTR_MERGE,
     ATTR_RAW,
+    ATTR_REPLACE,
     ATTR_SOURCE,
     ATTR_TYPE,
     ATTR_WIDGET_ID,
+    CONF_API_TOKEN,
     CONF_BASE_URL,
     CONF_DEFAULT_SOURCE,
+    CONF_DEFAULT_STATE_KEY,
     CONF_DEFAULT_TYPE,
     CONF_DEFAULT_WIDGET_ID,
     CONF_SECRET,
+    CONF_SECRET_HEADER,
+    DEFAULT_SECRET_HEADER,
+    DEFAULT_SOURCE_VALUE,
     DEFAULT_TIMEOUT,
     DOMAIN,
 )
-from .http_client import DashinoClient
+from .http_client import DashinoClient, DashinoRequestError
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = []
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old entry data to the latest version."""
+
+    if entry.version == 1:
+        data = {**entry.data}
+        data.setdefault(CONF_SECRET_HEADER, "X-Webhook-Secret")
+        data.setdefault(CONF_API_TOKEN, "")
+        data.setdefault(CONF_DEFAULT_STATE_KEY, "")
+        data.setdefault(CONF_DEFAULT_SOURCE, data.get(CONF_DEFAULT_SOURCE) or DEFAULT_SOURCE_VALUE)
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
+        return True
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -45,9 +68,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return entry.options.get(key, entry.data.get(key))
 
     base_url: str = _get(CONF_BASE_URL) or ""
-    default_source: str = _get(CONF_DEFAULT_SOURCE) or ""
+    default_source: str = _get(CONF_DEFAULT_SOURCE) or DEFAULT_SOURCE_VALUE
+    default_state_key: str | None = _get(CONF_DEFAULT_STATE_KEY) or None
     secret_value = _get(CONF_SECRET)
     secret: str | None = secret_value or None
+    secret_header: str = _get(CONF_SECRET_HEADER) or DEFAULT_SECRET_HEADER
+    api_token: str | None = _get(CONF_API_TOKEN) or None
     default_widget_id: str | None = _get(CONF_DEFAULT_WIDGET_ID) or None
     default_type: str | None = _get(CONF_DEFAULT_TYPE) or None
 
@@ -55,11 +81,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         base_url=base_url,
         default_source=default_source,
         secret=secret,
+        secret_header=secret_header,
+        api_token=api_token,
         session=async_get_clientsession(hass),
         timeout=DEFAULT_TIMEOUT,
     )
 
-    service_schema = vol.Schema(
+    service_schema_forward = vol.Schema(
         {
             vol.Optional(ATTR_SOURCE): cv.string,
             vol.Optional(ATTR_WIDGET_ID): cv.string,
@@ -69,8 +97,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
     )
 
+    service_schema_set_state = vol.Schema(
+        {
+            vol.Optional(ATTR_KEY): cv.string,
+            vol.Optional(ATTR_DATA): vol.Any(dict, list, str, int, float, bool, None),
+            vol.Optional(ATTR_MERGE): cv.boolean,
+            vol.Optional(ATTR_REPLACE): cv.boolean,
+            vol.Optional(ATTR_SOURCE): cv.string,
+            vol.Optional(ATTR_RAW): vol.Any(dict, list, str, int, float, bool, None),
+        }
+    )
+
+    service_schema_clear_state = vol.Schema(
+        {
+            vol.Optional(ATTR_KEY): cv.string,
+            vol.Optional(ATTR_SOURCE): cv.string,
+        }
+    )
+
     async def forward_service(call: ServiceCall) -> None:
-        """Forward the payload to Dashino."""
+        """Forward the payload to Dashino (legacy)."""
 
         source = call.data.get(ATTR_SOURCE) or default_source
         if not source:
@@ -97,8 +143,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         try:
             await client.forward_webhook(source=source, payload=body)
-        except HomeAssistantError:
-            raise
+        except DashinoRequestError as err:
+            raise HomeAssistantError(err.args[0]) from err
         except asyncio.TimeoutError as err:
             _LOGGER.exception("Dashino forward timed out: %s", err)
             raise HomeAssistantError("Dashino forward timed out") from err
@@ -106,11 +152,80 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.exception("Dashino forward failed: %s", err)
             raise HomeAssistantError("Dashino forward failed") from err
 
+    async def set_state_service(call: ServiceCall) -> None:
+        """Set or merge a Dashino state."""
+
+        key = call.data.get(ATTR_KEY) or default_state_key
+        if not key:
+            raise HomeAssistantError("Dashino state key is required")
+
+        source_value = call.data.get(ATTR_SOURCE) or default_source or DEFAULT_SOURCE_VALUE
+        raw = call.data.get(ATTR_RAW)
+
+        if raw is not None:
+            body = raw
+        else:
+            data_value = call.data.get(ATTR_DATA)
+            if data_value is None:
+                data_value = {}
+            replace_value = call.data.get(ATTR_REPLACE)
+            merge_value = call.data.get(ATTR_MERGE)
+            merge = True
+            if replace_value is True:
+                merge = False
+            elif merge_value is not None:
+                merge = bool(merge_value)
+
+            body = {"data": data_value, "merge": merge, "source": source_value}
+
+        try:
+            await client.set_state_value(key, body)
+        except DashinoRequestError as err:
+            raise HomeAssistantError(err.args[0]) from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.exception("Dashino set_state timed out: %s", err)
+            raise HomeAssistantError("Dashino set_state timed out") from err
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Dashino set_state failed: %s", err)
+            raise HomeAssistantError("Dashino set_state failed") from err
+
+    async def clear_state_service(call: ServiceCall) -> None:
+        """Clear a Dashino state."""
+
+        key = call.data.get(ATTR_KEY) or default_state_key
+        if not key:
+            raise HomeAssistantError("Dashino state key is required")
+
+        try:
+            await client.clear_state_value(key)
+        except DashinoRequestError as err:
+            raise HomeAssistantError(err.args[0]) from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.exception("Dashino clear_state timed out: %s", err)
+            raise HomeAssistantError("Dashino clear_state timed out") from err
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Dashino clear_state failed: %s", err)
+            raise HomeAssistantError("Dashino clear_state failed") from err
+
     hass.services.async_register(
         DOMAIN,
         "forward",
         forward_service,
-        schema=service_schema,
+        schema=service_schema_forward,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "set_state",
+        set_state_service,
+        schema=service_schema_set_state,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "clear_state",
+        clear_state_service,
+        schema=service_schema_clear_state,
     )
 
     hass.data[DOMAIN][entry.entry_id] = {
@@ -126,9 +241,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Dashino config entry."""
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if hass.services.has_service(DOMAIN, "forward"):
-        hass.services.async_remove(DOMAIN, "forward")
+    for service in ("forward", "set_state", "clear_state"):
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
 
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
 

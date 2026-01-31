@@ -9,16 +9,19 @@ from homeassistant.helpers import diagnostics
 from homeassistant.config_entries import ConfigEntry
 
 from .const import (
+    CONF_API_TOKEN,
     CONF_BASE_URL,
     CONF_DEFAULT_SOURCE,
+    CONF_DEFAULT_STATE_KEY,
     CONF_DEFAULT_TYPE,
     CONF_DEFAULT_WIDGET_ID,
     CONF_SECRET,
+    CONF_SECRET_HEADER,
     DOMAIN,
 )
 
 
-def _redact_secret(value: str | None) -> str | None:
+def _redact(value: str | None) -> str | None:
     if not value:
         return None
     return diagnostics.REDACTED
@@ -39,9 +42,12 @@ async def async_get_config_entry_diagnostics(
         "config": {
             CONF_BASE_URL: conf.get(CONF_BASE_URL),
             CONF_DEFAULT_SOURCE: conf.get(CONF_DEFAULT_SOURCE),
+            CONF_DEFAULT_STATE_KEY: conf.get(CONF_DEFAULT_STATE_KEY) or None,
             CONF_DEFAULT_WIDGET_ID: conf.get(CONF_DEFAULT_WIDGET_ID) or None,
             CONF_DEFAULT_TYPE: conf.get(CONF_DEFAULT_TYPE) or None,
-            CONF_SECRET: _redact_secret(conf.get(CONF_SECRET)),
+            CONF_SECRET: _redact(conf.get(CONF_SECRET)),
+            CONF_SECRET_HEADER: conf.get(CONF_SECRET_HEADER),
+            CONF_API_TOKEN: _redact(conf.get(CONF_API_TOKEN)),
         },
         "state": {
             "last_error": last_error,

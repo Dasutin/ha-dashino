@@ -3,20 +3,24 @@
     "step": {
       "user": {
         "title": "Dashino",
-        "description": "Configure the Dashino webhook forwarder.",
+        "description": "Configure Dashino State API and optional secret/token.",
         "data": {
           "base_url": "Dashino Base URL",
           "default_source": "Default source",
-          "secret": "X-Webhook-Secret (optional)",
-          "default_widget_id": "Default widgetId (optional)",
-          "default_type": "Default type (optional)"
+          "default_state_key": "Default state key (optional)",
+          "api_token": "Dashino API token (Bearer, optional)",
+          "secret": "Dashino secret (optional)",
+          "secret_header": "Secret header name",
+          "default_widget_id": "Default widgetId (legacy forward)",
+          "default_type": "Default type (legacy forward)"
         }
       }
     },
     "error": {
       "cannot_connect": "Unable to connect to Dashino.",
       "invalid_url": "Enter a valid http(s) URL.",
-      "invalid_source": "Source cannot be empty."
+      "invalid_source": "Source cannot be empty.",
+      "state_api_missing": "Dashino State API not available (update Dashino)."
     },
     "abort": {
       "single_instance_allowed": "Only one Dashino configuration is allowed."
@@ -24,8 +28,16 @@
   },
   "services": {
     "forward": {
-      "name": "Forward webhook",
+      "name": "Forward webhook (legacy)",
       "description": "Send a payload to the Dashino webhook endpoint."
+    },
+    "set_state": {
+      "name": "Set state",
+      "description": "Update a Dashino state key."
+    },
+    "clear_state": {
+      "name": "Clear state",
+      "description": "Delete a Dashino state key."
     }
   }
 }

@@ -1,6 +1,93 @@
+set_state:
+  name: Set state
+  description: Update a Dashino state key (merge by default).
+  fields:
+    key:
+      name: State key
+      description: State key to update; defaults to configured default key when omitted.
+      selector:
+        text:
+    data:
+      name: Data
+      description: JSON payload to store under the state key (ignored when raw is provided).
+      selector:
+        object:
+    merge:
+      name: Merge
+      description: Merge into existing state (default true). Set false to replace when not using "replace".
+      selector:
+        boolean:
+    replace:
+      name: Replace
+      description: Force replace (sets merge=false). Overrides the merge flag.
+      selector:
+        boolean:
+    source:
+      name: Source
+      description: Label for who set the state; defaults to configured source.
+      selector:
+        text:
+    raw:
+      name: Raw payload
+      description: Full JSON body sent directly; ignores other fields when provided.
+      selector:
+        object:
+  examples:
+    - name: Set forecast (merge)
+      description: Merge forecast data into state "forecast".
+      service: dashino.set_state
+      data:
+        key: forecast
+        merge: true
+        data:
+          temperature: "{{ state_attr('weather.home','temperature') }}"
+          dew_point: "{{ state_attr('weather.home','dew_point') }}"
+          summary: "{{ states('weather.home') }}"
+    - name: Replace state
+      description: Replace state "forecast" entirely.
+      service: dashino.set_state
+      data:
+        key: forecast
+        replace: true
+        data:
+          temperature: 21
+          dew_point: 12
+          summary: clear
+    - name: Raw body
+      description: Send a fully custom state body.
+      service: dashino.set_state
+      data:
+        key: custom
+        raw:
+          data:
+            flag: true
+          merge: false
+          source: ha-script
+
+clear_state:
+  name: Clear state
+  description: Delete a Dashino state key.
+  fields:
+    key:
+      name: State key
+      description: State key to delete; defaults to configured default key when omitted.
+      selector:
+        text:
+    source:
+      name: Source
+      description: Optional label; currently informational.
+      selector:
+        text:
+  examples:
+    - name: Clear forecast state
+      description: Remove the "forecast" state key.
+      service: dashino.clear_state
+      data:
+        key: forecast
+
 forward:
-  name: Forward webhook
-  description: Send a payload to the Dashino webhook endpoint.
+  name: Send Event (legacy)
+  description: Legacy webhook forwarding; prefer dashino.set_state.
   fields:
     source:
       name: Source
