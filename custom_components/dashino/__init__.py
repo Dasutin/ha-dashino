@@ -17,10 +17,16 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     ATTR_DATA,
+    ATTR_ENTITY_ID,
+    ATTR_FIELD,
     ATTR_KEY,
     ATTR_MERGE,
+    ATTR_MAP,
     ATTR_RAW,
     ATTR_REPLACE,
+    ATTR_ATTRIBUTE,
+    ATTR_AS_NUMBER,
+    ATTR_ROUND,
     ATTR_SOURCE,
     ATTR_TYPE,
     ATTR_WIDGET_ID,
@@ -108,6 +114,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
     )
 
+    service_schema_set_state_field = vol.Schema(
+        {
+            vol.Optional(ATTR_KEY): cv.string,
+            vol.Required(ATTR_FIELD): cv.string,
+            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+            vol.Optional(ATTR_ATTRIBUTE): cv.string,
+            vol.Optional(ATTR_MERGE): cv.boolean,
+            vol.Optional(ATTR_SOURCE): cv.string,
+            vol.Optional(ATTR_AS_NUMBER): cv.boolean,
+            vol.Optional(ATTR_ROUND): vol.Coerce(int),
+            vol.Optional(ATTR_MAP): dict,
+        }
+    )
+
     service_schema_clear_state = vol.Schema(
         {
             vol.Optional(ATTR_KEY): cv.string,
@@ -189,6 +209,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.exception("Dashino set_state failed: %s", err)
             raise HomeAssistantError("Dashino set_state failed") from err
 
+    async def set_state_field_service(call: ServiceCall) -> None:
+        """Set a single field in a Dashino state from an entity value."""
+
+        key = call.data.get(ATTR_KEY) or default_state_key
+        if not key:
+            raise HomeAssistantError("Dashino state key is required")
+
+        field_name = call.data.get(ATTR_FIELD)
+        if not field_name:
+            raise HomeAssistantError("Dashino field is required")
+
+        entity_id = call.data.get(ATTR_ENTITY_ID)
+        if not entity_id:
+            raise HomeAssistantError("Dashino entity_id is required")
+
+        state = hass.states.get(entity_id)
+        if state is None:
+            raise HomeAssistantError(f"Entity '{entity_id}' not found")
+
+        attribute_name = call.data.get(ATTR_ATTRIBUTE)
+        if attribute_name:
+            if attribute_name not in state.attributes:
+                raise HomeAssistantError(
+                    f"Attribute '{attribute_name}' not found on entity '{entity_id}'"
+                )
+            value: Any = state.attributes.get(attribute_name)
+        else:
+            value = state.state
+
+        map_table = call.data.get(ATTR_MAP)
+        if isinstance(map_table, dict) and isinstance(value, str) and value in map_table:
+            value = map_table[value]
+
+        as_number = call.data.get(ATTR_AS_NUMBER, False)
+        round_digits = call.data.get(ATTR_ROUND)
+        if as_number:
+            try:
+                value = float(value)
+            except (TypeError, ValueError) as err:
+                raise HomeAssistantError(
+                    f"Value for entity '{entity_id}' is not numeric and cannot be converted"
+                ) from err
+            if round_digits is not None:
+                value = round(value, round_digits)
+
+        merge_value = call.data.get(ATTR_MERGE)
+        merge = True if merge_value is None else bool(merge_value)
+        source_value = call.data.get(ATTR_SOURCE) or default_source or DEFAULT_SOURCE_VALUE
+
+        body = {"data": {field_name: value}, "merge": merge, "source": source_value}
+
+        try:
+            await client.set_state_value(key, body)
+        except DashinoRequestError as err:
+            raise HomeAssistantError(err.args[0]) from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.exception("Dashino set_state_field timed out: %s", err)
+            raise HomeAssistantError("Dashino set_state_field timed out") from err
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("Dashino set_state_field failed: %s", err)
+            raise HomeAssistantError("Dashino set_state_field failed") from err
+
     async def clear_state_service(call: ServiceCall) -> None:
         """Clear a Dashino state."""
 
@@ -223,6 +305,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(
         DOMAIN,
+        "set_state_field",
+        set_state_field_service,
+        schema=service_schema_set_state_field,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
         "clear_state",
         clear_state_service,
         schema=service_schema_clear_state,
@@ -241,7 +330,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Dashino config entry."""
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    for service in ("forward", "set_state", "clear_state"):
+    for service in ("forward", "set_state", "set_state_field", "clear_state"):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
 

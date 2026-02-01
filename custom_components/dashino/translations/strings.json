@@ -33,9 +33,13 @@
       "name": "Forward webhook (legacy)",
       "description": "Send a payload to the Dashino webhook endpoint."
     },
+      "set_state_field": {
+        "name": "Set state field",
+        "description": "Update one field in a Dashino state from a Home Assistant entity (no JSON)."
+      },
     "set_state": {
       "name": "Set state",
-      "description": "Update a Dashino state key."
+        "description": "Advanced: update a Dashino state key with JSON or raw body."
     },
     "clear_state": {
       "name": "Clear state",

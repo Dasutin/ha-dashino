@@ -1,6 +1,81 @@
+set_state_field:
+  name: Set state field (UI-first)
+  description: Update one field in a Dashino state using a Home Assistant entity (no JSON required). Use multiple actions to set multiple fields.
+  fields:
+    key:
+      name: State key
+      description: State key to update; defaults to configured default key when omitted.
+      selector:
+        text:
+    field:
+      name: Field name
+      description: The field in the Dashino state object to set.
+      selector:
+        text:
+    entity_id:
+      name: Entity
+      description: Entity whose state or attribute will be written into the Dashino state.
+      selector:
+        entity:
+    attribute:
+      name: Attribute (optional)
+      description: Attribute to use. Leave blank to use the entity state.
+      selector:
+        text:
+    map:
+      name: Map values (optional)
+      description: Mapping table for string values; replaces when a match is found.
+      selector:
+        object:
+    as_number:
+      name: Convert to number
+      description: Convert the value to a number before sending (fails if not numeric).
+      selector:
+        boolean:
+    round:
+      name: Round digits
+      description: Rounds numeric value to this many digits (requires Convert to number).
+      selector:
+        number:
+          min: 0
+          max: 6
+          mode: slider
+          step: 1
+    merge:
+      name: Merge
+      description: Merge into existing state (default true). Set false to replace the entire state object.
+      selector:
+        boolean:
+    source:
+      name: Source
+      description: Label for who set the state; defaults to configured source.
+      selector:
+        text:
+  examples:
+    - name: Forecast temperature from entity
+      description: Set field "temperature" on state "forecast" using weather entity temperature attribute.
+      service: dashino.set_state_field
+      data:
+        key: forecast
+        field: temperature
+        entity_id: weather.home
+        attribute: temperature
+        as_number: true
+        round: 0
+    - name: Summary from entity state
+      description: Set field "summary" from entity state with mapping.
+      service: dashino.set_state_field
+      data:
+        key: forecast
+        field: summary
+        entity_id: weather.home
+        map:
+          cloudy: Cloudy
+          rainy: Rainy
+
 set_state:
-  name: Set state
-  description: Update a Dashino state key (merge by default).
+  name: Set state (Advanced / JSON)
+  description: Advanced state update. Provide JSON data or raw body; merge by default.
   fields:
     key:
       name: State key
@@ -29,16 +104,15 @@ set_state:
         text:
     raw:
       name: Raw payload
-      description: Full JSON body sent directly; ignores other fields when provided.
+      description: Full JSON body sent directly; ignores other fields when provided. (Advanced override)
       selector:
         object:
   examples:
-    - name: Set forecast (merge)
-      description: Merge forecast data into state "forecast".
+    - name: Forecast via JSON
+      description: Set multiple forecast fields in one call.
       service: dashino.set_state
       data:
         key: forecast
-        merge: true
         data:
           temperature: "{{ state_attr('weather.home','temperature') }}"
           dew_point: "{{ state_attr('weather.home','dew_point') }}"
