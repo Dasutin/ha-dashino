@@ -149,6 +149,29 @@ class DashinoConfigFlow(ConfigFlow, domain=DOMAIN):
         data_schema = _build_schema()
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfigure to update entry without removal."""
+
+        entry = self.hass.config_entries.async_get_entry(self.context.get("entry_id"))
+        if entry is None:
+            return self.async_abort(reason="unknown_entry")
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            normalized, errors = await _validate_and_normalize(self.hass, user_input)
+            if not errors:
+                self.hass.config_entries.async_update_entry(entry, data=normalized, options={})
+                return self.async_abort(reason="reconfigure_successful")
+
+        current = entry.options or entry.data
+        data_schema = _build_schema(current)
+        return self.async_show_form(
+            step_id="reconfigure", data_schema=data_schema, errors=errors
+        )
+
 
 class DashinoOptionsFlowHandler(OptionsFlow):
     """Handle Dashino options."""

@@ -23,7 +23,9 @@
       "state_api_missing": "Dashino State API not available (update Dashino)."
     },
     "abort": {
-      "single_instance_allowed": "Only one Dashino configuration is allowed."
+      "single_instance_allowed": "Only one Dashino configuration is allowed.",
+      "unknown_entry": "Entry not found.",
+      "reconfigure_successful": "Dashino entry updated."
     }
   },
   "services": {
